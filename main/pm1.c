@@ -110,7 +110,7 @@ static uint16_t rd_mv(uint8_t reg)
     if (!s_ok || rd(reg, b, 2) != ESP_OK) {
         return 0;
     }
-    return (uint16_t)((b[0] | (b[1] << 8)) & 0x0FFF);
+    return (uint16_t)(b[0] | (b[1] << 8));
 }
 
 uint16_t pm1_battery_mv(void)

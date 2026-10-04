@@ -69,10 +69,13 @@ static BMI2_INTF_RETURN_TYPE bus_write(uint8_t reg, const uint8_t *data, uint32_
 static void bus_delay_us(uint32_t us, void *ptr)
 {
     (void)ptr;
-    if (us < 2000) {
+    /* One tick is 10 ms (CONFIG_FREERTOS_HZ=100): pdMS_TO_TICKS() of a few ms rounds down to 0, which skipped
+     * the 2 ms soft-reset wait and made the BMI270 NACK. Busy-wait the short ones, and for long ones sleep
+     * a whole number of ticks that is never shorter than requested. */
+    if (us < 20000) {
         esp_rom_delay_us(us);
     } else {
-        vTaskDelay(pdMS_TO_TICKS(us / 1000 + 1));
+        vTaskDelay(pdMS_TO_TICKS((us + 999) / 1000) + 1);
     }
 }
 

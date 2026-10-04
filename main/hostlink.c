@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <time.h>
 
 #include "app_config.h"
 #ifdef CONFIG_GYROLOG_SELFTEST
@@ -14,6 +15,7 @@
 #endif
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
 #include "gyl_format.h"
 #include "logstore.h"
 #include "pm1.h"

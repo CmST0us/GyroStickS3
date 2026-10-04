@@ -26,8 +26,8 @@
 | 0x09 | `I2C_CFG`，写 0 关闭 PM1 的 I2C 空闲睡眠（M5GFX / M5Unified 同样处理） |
 | 0x0A | `WDT_CNT`，写 0 关闭 PM1 看门狗 |
 | 0x10/0x11/0x13/0x16 | GPIO 模式 / 输出 / 驱动 / 功能，GPIO2 = LCD 轨，GPIO3 = 喇叭功放使能（保持低） |
-| 0x22–0x23 | 电池电压，mV（12 位，小端） |
-| 0x24–0x25 | USB（VIN）电压，mV；固件用 ≥ 4 V 判断是否插着 USB |
+| 0x22–0x23 | 电池电压，mV（16 位，小端；真机实测满电读到 `0x1068` = 4200 mV） |
+| 0x24–0x25 | USB（VIN）电压，mV（16 位，小端；真机插着 USB 读到 `0x1496` = 5270 mV）；固件用 ≥ 4 V 判断是否插着 USB |
 
 ## BMI270 轴向与 Gyroflow orientation
 
