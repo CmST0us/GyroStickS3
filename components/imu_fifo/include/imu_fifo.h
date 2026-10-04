@@ -39,8 +39,8 @@ typedef struct {
 /*
  * Parse as many complete frames as possible.
  *   want_acc : require accel data in each sample (6 channel mode)
- *   consumed : bytes fully processed; the caller keeps the remaining (partial frame) bytes
- *              and prepends them to the next FIFO read.
+ *   consumed : bytes fully processed. A trailing partial frame is not consumed; the BMI270 re-sends a frame that
+ *              was cut off by the end of a read from its header on the next read, so the caller drops it.
  * Returns the number of samples written to `out`. Stops early if `out` is full.
  */
 size_t imu_fifo_parse(const uint8_t *data, size_t len, bool want_acc, imu_sample_t *out, size_t out_max,

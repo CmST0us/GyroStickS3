@@ -22,6 +22,8 @@
 #include "recorder.h"
 
 #define SESSION_HOLD_US (60LL * 1000000LL)
+#define USB_TX_BUF      2048              /* USB Serial/JTAG driver TX ring buffer */
+#define USB_TX_CHUNK    (USB_TX_BUF / 4)  /* largest single write that is certain to fit */
 
 static int64_t s_last_cmd = -SESSION_HOLD_US;
 static char s_line[80];
@@ -48,7 +50,7 @@ static int link_write_some(const uint8_t *p, size_t n)
 void hostlink_init(void)
 {
     usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
-    cfg.tx_buffer_size = 2048;
+    cfg.tx_buffer_size = USB_TX_BUF;
     cfg.rx_buffer_size = 256;
     usb_serial_jtag_driver_install(&cfg);
 }
@@ -60,6 +62,11 @@ static int link_read_byte(uint8_t *c)
 
 static int link_write_some(const uint8_t *p, size_t n)
 {
+    /* The driver copies the whole chunk into its TX ring buffer in one go; a chunk larger than that buffer can never
+     * be accepted (write_bytes just times out and returns 0), so a 4 KiB page has to be sent in small pieces. */
+    if (n > USB_TX_CHUNK) {
+        n = USB_TX_CHUNK;
+    }
     return usb_serial_jtag_write_bytes(p, n, pdMS_TO_TICKS(250));
 }
 #endif

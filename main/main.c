@@ -108,8 +108,11 @@ static void service_recording(void)
     }
     size_t n;
     imu_burst_t b;
-    if (imu_read_burst(s_samples, sizeof(s_samples) / sizeof(s_samples[0]), &n, &b) == ESP_OK) {
+    esp_err_t err = imu_read_burst(s_samples, sizeof(s_samples) / sizeof(s_samples[0]), &n, &b);
+    if (err == ESP_OK) {
         rec_feed(s_samples, n, &b, s_batt_mv);
+    } else {
+        ESP_LOGW(TAG, "FIFO read failed: %s", esp_err_to_name(err));
     }
 }
 
@@ -282,6 +285,10 @@ static void main_loop(void)
         btn_event_t a = buttons_poll(BTN_AUX, now);
         if (m != BTN_EV_NONE || a != BTN_EV_NONE) {
             s_last_activity_us = now;
+        }
+        if (btn_wake_gate(ui_visible(), &m, &a)) {
+            ESP_LOGI(TAG, "screen was off: click only wakes the screen");
+            ui_show(s_state == APP_RECORDING ? UI_REC : UI_READY, REC_SCREEN_S);
         }
         if (m == BTN_EV_CLICK) {
             if (ui_current() == UI_ERASE_CONFIRM && s_state == APP_IDLE) {

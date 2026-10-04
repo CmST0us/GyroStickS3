@@ -90,13 +90,22 @@ int main(void)
     memset(&info, 0, sizeof(info));
     n = imu_fifo_parse(buf, pos - 5, true, out, 32, &info, &used);
     CHECK(n == 1 && used == full);
-    /* caller prepends leftovers to the next read: simulate */
-    uint8_t cat[64];
-    size_t left = (pos - 5) - used;
-    memcpy(cat, buf + used, left);
-    memcpy(cat + left, buf + pos - 5, 5);
-    n = imu_fifo_parse(cat, left + 5, true, out, 32, &info, &used);
-    CHECK(n == 1 && out[0].v[0] == 2 && used == left + 5);
+    /* Real BMI270 behaviour (seen on hardware): a frame cut off by the end of a read is re-sent from its header on
+     * the next read, so the caller drops the leftover and parses the next read on its own. Frames 1, 2, 3 must come
+     * out exactly once and in order. */
+    {
+        uint8_t second[64];
+        size_t slen = 0;
+        slen += gyr_acc_frame(second + slen, 2);   /* the cut-off frame, complete this time */
+        slen += gyr_acc_frame(second + slen, 3);
+        imu_sample_t all[4];
+        size_t total = 0;
+        memset(&info, 0, sizeof(info));
+        total += imu_fifo_parse(buf, pos - 5, true, all, 4, &info, &used);          /* read 1: frame 1 + 8 stray bytes */
+        total += imu_fifo_parse(second, slen, true, all + total, 4 - total, &info, &used); /* read 2 */
+        CHECK(total == 3 && all[0].v[0] == 1 && all[1].v[0] == 2 && all[2].v[0] == 3);
+        CHECK(!info.invalid);
+    }
 
     /* over-read marker ends parsing */
     pos = 0;

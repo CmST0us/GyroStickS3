@@ -55,6 +55,19 @@ static inline void btn_swallow(btn_state_t *b, bool pressed_now)
     b->long_fired = true;
 }
 
+/* While the screen is off, the first click of either button only wakes it up: the click is consumed so it
+ * cannot start / stop a recording or open a menu by accident. Long presses are left alone (deliberate gesture).
+ * Returns true when the screen has to be woken. */
+static inline bool btn_wake_gate(bool screen_on, btn_event_t *main_ev, btn_event_t *aux_ev)
+{
+    if (screen_on || (*main_ev != BTN_EV_CLICK && *aux_ev != BTN_EV_CLICK)) {
+        return false;
+    }
+    if (*main_ev == BTN_EV_CLICK) *main_ev = BTN_EV_NONE;
+    if (*aux_ev == BTN_EV_CLICK) *aux_ev = BTN_EV_NONE;
+    return true;
+}
+
 static inline bool btn_busy(const btn_state_t *b, int64_t now_us)
 {
     return b->stable || b->raw_last || now_us - b->raw_since < 2 * BTN_DEBOUNCE_US;

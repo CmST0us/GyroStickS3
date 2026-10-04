@@ -30,15 +30,13 @@ static const char *TAG = "imu";
 
 #define FIFO_SIZE   2048
 #define TIME_EXTRA  6          /* sensortime frame (4) + padding, read past the last valid frame */
-#define RX_PREFIX   32         /* room to prepend a partial frame left over from the previous read */
 #define RX_MAX      (FIFO_SIZE + TIME_EXTRA + 16)
 #define FIFO_NEARLY_FULL (FIFO_SIZE - 64)
 
 static struct bmi2_dev s_dev;
 static i2c_master_dev_handle_t s_i2c;
 static bool s_ready;
-static uint8_t s_rx[RX_PREFIX + RX_MAX];
-static size_t s_carry;
+static uint8_t s_rx[RX_MAX];
 
 #ifdef CONFIG_GYROLOG_SIM_IMU
 static int64_t s_sim_t0_us;
@@ -81,8 +79,23 @@ static void bus_delay_us(uint32_t us, void *ptr)
 
 static esp_err_t reg_read(uint8_t reg, uint8_t *buf, size_t n)
 {
+    if (n > BMI2_MAX_LEN) {
+        return ESP_ERR_INVALID_SIZE; /* bmi2_get_regs() stages the data in a BMI2_MAX_LEN stack buffer */
+    }
     return bmi2_get_regs(reg, buf, (uint16_t)n, &s_dev) == BMI2_OK ? ESP_OK : ESP_FAIL;
 }
+
+#ifndef CONFIG_GYROLOG_SIM_IMU
+/* FIFO data is up to 2 KiB, far more than bmi2_get_regs() can take: read it straight from the bus,
+ * like Bosch's own bmi2_read_fifo_data() does (including the power-save dependent settling delay). */
+static esp_err_t fifo_read(uint8_t *buf, size_t n)
+{
+    uint8_t reg = REG_FIFO_DATA;
+    esp_err_t err = i2c_master_transmit_receive(s_i2c, &reg, 1, buf, n, 200);
+    s_dev.delay_us(s_dev.aps_status == BMI2_ENABLE ? 450 : 2, s_dev.intf_ptr);
+    return err;
+}
+#endif
 
 static esp_err_t reg_write(uint8_t reg, uint8_t val)
 {
@@ -166,7 +179,6 @@ esp_err_t imu_start(void)
     s_sim_frames = 0;
     s_sim_read = 0;
     s_sim_dropout_done = false;
-    s_carry = 0;
     return ESP_OK;
 #endif
     const bool acc = GYROLOG_CHANNELS == 6;
@@ -190,7 +202,6 @@ esp_err_t imu_start(void)
     }
     vTaskDelay(pdMS_TO_TICKS(70)); /* gyro start-up time */
     err = reg_write(REG_CMD, CMD_FIFO_FLUSH);
-    s_carry = 0;
     return err;
 }
 
@@ -199,7 +210,6 @@ esp_err_t imu_stop(void)
     if (!s_ready) {
         return ESP_ERR_INVALID_STATE;
     }
-    s_carry = 0;
 #ifdef CONFIG_GYROLOG_SIM_IMU
     return ESP_OK;
 #else
@@ -287,7 +297,7 @@ static esp_err_t fifo_fetch(uint8_t *dst, size_t cap, size_t *got, bool *near_fu
     if (want > cap) {
         want = cap;
     }
-    err = reg_read(REG_FIFO_DATA, dst, want);
+    err = fifo_read(dst, want);
     if (err == ESP_OK) {
         *got = want;
     }
@@ -299,7 +309,7 @@ esp_err_t imu_read_burst(imu_sample_t *out, size_t max, size_t *n, imu_burst_t *
 {
     memset(info, 0, sizeof(*info));
     *n = 0;
-    uint8_t *dst = s_rx + RX_PREFIX;
+    uint8_t *dst = s_rx;
     size_t got = 0;
     bool near_full = false;
     esp_err_t err = fifo_fetch(dst, RX_MAX, &got, &near_full);
@@ -312,21 +322,14 @@ esp_err_t imu_read_burst(imu_sample_t *out, size_t max, size_t *n, imu_burst_t *
     }
     info->fifo_bytes = (uint16_t)got;
 
-    /* a partial frame left over from the previous read sits right in front of dst */
-    uint8_t *start = dst - s_carry;
-    size_t total = s_carry + got;
+    /* The read ends a few bytes past the fill level we asked for (TIME_EXTRA), so it often stops in the middle of a
+     * frame that arrived in the meantime. The BMI270 re-sends such a cut-off frame from its header on the next read:
+     * whatever follows the last complete frame is simply dropped here. (Keeping it and prepending it to the next read
+     * duplicated the frame header, broke the frame alignment and made every second read unparsable.) */
     imu_fifo_info_t fi;
     memset(&fi, 0, sizeof(fi));
     size_t used;
-    *n = imu_fifo_parse(start, total, GYROLOG_CHANNELS == 6, out, max, &fi, &used);
-    size_t left = total - used;
-    if (left > RX_PREFIX) {
-        left = 0; /* cannot happen with valid data; drop garbage */
-    }
-    if (left) {
-        memmove(s_rx + RX_PREFIX - left, start + used, left);
-    }
-    s_carry = left;
+    *n = imu_fifo_parse(dst, got, GYROLOG_CHANNELS == 6, out, max, &fi, &used);
     info->has_st = fi.has_st;
     info->st24 = fi.st24;
     info->skipped = fi.skipped;

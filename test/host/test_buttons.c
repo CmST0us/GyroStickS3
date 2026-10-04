@@ -94,6 +94,25 @@ int main(void)
     run(&b, lv, &t, ev);
     CHECK(strcmp(ev, "") == 0);
 
+    /* screen off: a click on either button only wakes the screen and is consumed */
+    {
+        btn_event_t m = BTN_EV_CLICK, a = BTN_EV_NONE;
+        CHECK(btn_wake_gate(false, &m, &a) && m == BTN_EV_NONE && a == BTN_EV_NONE);
+        m = BTN_EV_NONE; a = BTN_EV_CLICK;
+        CHECK(btn_wake_gate(false, &m, &a) && m == BTN_EV_NONE && a == BTN_EV_NONE);
+        /* screen on: events pass through untouched */
+        m = BTN_EV_CLICK; a = BTN_EV_NONE;
+        CHECK(!btn_wake_gate(true, &m, &a) && m == BTN_EV_CLICK && a == BTN_EV_NONE);
+        /* screen off, nothing pressed: nothing to do */
+        m = BTN_EV_NONE; a = BTN_EV_NONE;
+        CHECK(!btn_wake_gate(false, &m, &a));
+        /* long presses are not swallowed even with the screen off */
+        m = BTN_EV_LONG; a = BTN_EV_NONE;
+        CHECK(!btn_wake_gate(false, &m, &a) && m == BTN_EV_LONG);
+        m = BTN_EV_NONE; a = BTN_EV_LONG;
+        CHECK(!btn_wake_gate(false, &m, &a) && a == BTN_EV_LONG);
+    }
+
     /* busy tracking */
     memset(&b, 0, sizeof(b));
     CHECK(!btn_busy(&b, t));
