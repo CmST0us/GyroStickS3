@@ -1,0 +1,15 @@
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+__pycache__/
+*.pyc
+test/host/test_gyl
+test/host/test_imu_fifo
+test/host/test_pages.bin
+test/host/test_samples.csv
+*.gcsv
+test/host/test_buttons
+test/host/ui_preview
+test/host/ui_*.ppm

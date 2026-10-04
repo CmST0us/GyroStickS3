@@ -1,0 +1,186 @@
+menu "StickS3 Gyroflow logger"
+
+    choice GYROLOG_MOUNT
+        prompt "How the StickS3 sits on the camera (viewed from behind the camera)"
+        default GYROLOG_MOUNT_UP_USB_RIGHT
+        help
+            Selects the Gyroflow IMU orientation string written into every .gcsv file and the
+            rotation of the on-screen UI. Gyroflow also lets you override the orientation in its
+            own UI, so a wrong choice here is easy to correct later.
+
+        config GYROLOG_MOUNT_UP_USB_RIGHT
+            bool "Lying flat on the hot shoe, screen up, USB-C port to the right"
+        config GYROLOG_MOUNT_BACK_USB_RIGHT
+            bool "Standing in the hot shoe, screen facing the photographer, USB-C port to the right"
+        config GYROLOG_MOUNT_UP_USB_LEFT
+            bool "Lying flat on the hot shoe, screen up, USB-C port to the left"
+        config GYROLOG_MOUNT_BACK_USB_LEFT
+            bool "Standing in the hot shoe, screen facing the photographer, USB-C port to the left"
+        config GYROLOG_MOUNT_CUSTOM
+            bool "Custom (set orientation string and UI rotation below)"
+    endchoice
+
+    config GYROLOG_ORIENTATION_CUSTOM
+        string "Custom Gyroflow IMU orientation string"
+        depends on GYROLOG_MOUNT_CUSTOM
+        default "XYZ"
+        help
+            Three letters from XYZ. Upper case = axis as is, lower case = inverted. The BMI270 axes of
+            the StickS3 are: X towards the USB-C port, Y to the right of the screen when the USB-C port
+            is at the bottom, Z out of the screen.
+
+    choice GYROLOG_UI_ROTATION_CUSTOM
+        prompt "UI rotation (custom mount)"
+        depends on GYROLOG_MOUNT_CUSTOM
+        default GYROLOG_UI_ROT_CUSTOM_RIGHT
+        config GYROLOG_UI_ROT_CUSTOM_DOWN
+            bool "USB-C port at the bottom (portrait)"
+        config GYROLOG_UI_ROT_CUSTOM_RIGHT
+            bool "USB-C port at the right (landscape)"
+        config GYROLOG_UI_ROT_CUSTOM_UP
+            bool "USB-C port at the top (portrait, upside down)"
+        config GYROLOG_UI_ROT_CUSTOM_LEFT
+            bool "USB-C port at the left (landscape)"
+    endchoice
+
+    choice GYROLOG_ODR
+        prompt "IMU sample rate"
+        default GYROLOG_ODR_200
+        help
+            Gyroflow works well from about 100 Hz up. Higher rates fill the 7 MB log flash faster.
+        config GYROLOG_ODR_100
+            bool "100 Hz"
+        config GYROLOG_ODR_200
+            bool "200 Hz"
+        config GYROLOG_ODR_400
+            bool "400 Hz"
+    endchoice
+
+    config GYROLOG_ODR_HZ
+        int
+        default 100 if GYROLOG_ODR_100
+        default 200 if GYROLOG_ODR_200
+        default 400 if GYROLOG_ODR_400
+
+    choice GYROLOG_GYRO_RANGE
+        prompt "Gyroscope full scale"
+        default GYROLOG_GYRO_1000
+        config GYROLOG_GYRO_250
+            bool "+/- 250 dps"
+        config GYROLOG_GYRO_500
+            bool "+/- 500 dps"
+        config GYROLOG_GYRO_1000
+            bool "+/- 1000 dps"
+        config GYROLOG_GYRO_2000
+            bool "+/- 2000 dps"
+    endchoice
+
+    config GYROLOG_GYRO_DPS
+        int
+        default 250 if GYROLOG_GYRO_250
+        default 500 if GYROLOG_GYRO_500
+        default 1000 if GYROLOG_GYRO_1000
+        default 2000 if GYROLOG_GYRO_2000
+
+    choice GYROLOG_ACC_RANGE
+        prompt "Accelerometer full scale"
+        default GYROLOG_ACC_8G
+        config GYROLOG_ACC_4G
+            bool "+/- 4 g"
+        config GYROLOG_ACC_8G
+            bool "+/- 8 g"
+        config GYROLOG_ACC_16G
+            bool "+/- 16 g"
+    endchoice
+
+    config GYROLOG_ACC_G
+        int
+        default 4 if GYROLOG_ACC_4G
+        default 8 if GYROLOG_ACC_8G
+        default 16 if GYROLOG_ACC_16G
+
+    config GYROLOG_LOG_ACCEL
+        bool "Log accelerometer data too"
+        default y
+        help
+            Gyroflow only needs the gyroscope; the accelerometer enables horizon lock. Gyro-only logs
+            are roughly half the size.
+
+    config GYROLOG_IMU_LOW_NOISE
+        bool "BMI270 gyroscope low-noise mode"
+        default y
+        help
+            Costs roughly 0.3 mA more while recording but gives cleaner data.
+
+    config GYROLOG_MAIN_BUTTON_GPIO
+        int "GPIO of the main button (click = record/stop, long press = sleep/wake)"
+        default 11
+        help
+            StickS3: front button KEY1 = GPIO11, side button KEY2 = GPIO12. Must be an RTC capable
+            GPIO (0..21) because it wakes the chip from deep sleep.
+
+    config GYROLOG_AUX_BUTTON_GPIO
+        int "GPIO of the aux button (click = status screen, long press = erase menu)"
+        default 12
+
+    config GYROLOG_LONG_PRESS_MS
+        int "Long press duration (ms)"
+        default 1200
+        range 500 5000
+
+    config GYROLOG_IDLE_SLEEP_S
+        int "Go to deep sleep after this many idle seconds (0 = never)"
+        default 60
+        range 0 3600
+        help
+            Only applies when not recording and no USB power is connected.
+
+    config GYROLOG_REC_SCREEN_S
+        int "Seconds the screen stays on after start/stop"
+        default 3
+        range 1 30
+
+    config GYROLOG_LCD_BRIGHTNESS
+        int "LCD backlight brightness (percent)"
+        default 40
+        range 5 100
+
+    config GYROLOG_LIGHT_SLEEP_REC
+        bool "Use CPU light sleep between FIFO reads while recording"
+        default y
+        help
+            Saves roughly an order of magnitude of CPU power. Downside: the MCU clock is kept by the
+            inaccurate RTC oscillator while sleeping, so the MCU crystal cannot be used to calibrate the
+            IMU clock afterwards (the IMU's own clock is used for all timestamps either way).
+
+    config GYROLOG_FIFO_POLL_MS
+        int "FIFO read interval while recording (ms)"
+        default 160
+        range 40 400
+        help
+            The BMI270 FIFO holds 2 KiB (about 780 ms at 200 Hz, 6 axes). Flash page writes stall the CPU
+            for up to ~60 ms (worst case ~400 ms), keep a comfortable margin.
+
+    config GYROLOG_LOW_BATT_MV
+        int "Stop recording and sleep below this battery voltage (mV)"
+        default 3350
+        range 3000 3800
+
+    menu "Developer options"
+        config GYROLOG_SIM_IMU
+            bool "Simulate the IMU (no sensor needed)"
+            default n
+            help
+                Replaces the BMI270 by a synthetic FIFO source (including a data drop-out and a sensor
+                time counter that wraps) so the whole recording path can be tested without hardware,
+                for example in QEMU.
+
+        config GYROLOG_SELFTEST
+            bool "Run a scripted record / stop sequence after boot"
+            depends on GYROLOG_SIM_IMU
+            default n
+            help
+                Starts and stops two recordings on its own and logs the result. For automated tests.
+    endmenu
+
+endmenu
